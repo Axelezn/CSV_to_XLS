@@ -1,164 +1,218 @@
-import pandas as pd 
+import pandas as pd
 import os
 import sys
 import tkinter as tk
-from tkinter import filedialog, simpledialog
+from tkinter import filedialog, messagebox, scrolledtext
+from tkinter import ttk
 
-# --- FENÊTRES DE DIALOGUE GRAPHIQUE ---
-def afficher_dialogue_et_parametres():
-    root = tk.Tk()
-    root.withdraw() 
-    #Dossier en entrée
-    dossierSource = filedialog.askdirectory(
-        title="Choisissez un dossier qui contient les CSV que vous voulez traiter"
-    )
-    
-    if not dossierSource:
-        print("Opération annulée. Aucun dossier sélectionné.")
-        sys.exit()
-        #Fichier en sortie
-    nomExcel = simpledialog.askstring(
-        "Nom du fichier Excel de sortie",
-        "Entrez le nom du fichier Excel de sortie (ex: Rapport_Final.xlsx):",
-        initialvalue="Rapport_Fusionne.xlsx"
-    )
-    if not nomExcel:
-        print("Opération annulée. Aucun nom de fichier de sortie défini.")
-        sys.exit()
-    if not nomExcel.lower().endswith('.xlsx'):
-        nomExcel += '.xlsx'
+class ApplicationConvertisseur:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Convertisseur de fichiers CSV vers Excel - DEMB")
+        self.root.geometry("700x650")
+
+        # --- VARIABLES DE STOCKAGE ---
+        self.dossier_source_path = tk.StringVar()
+        # CORRECTION 1 : "fhichier" corrigé en "fichier" pour correspondre au reste du code
+        self.nom_fichier_sortie = tk.StringVar(value="Rapport_Fusionne.xlsx")
+        self.mode_execution = tk.StringVar(value="multi") 
         
-    return dossierSource, nomExcel
+        # --- Interfaçage ---
+        self.creer_widgets()
 
-# --- RENOMMAGE AUTOMATIQUE ---
-def renameCsv(dossierSource):
-    nb_renommes = 0
-    print("\n--- ÉTAPE DE PRÉPARATION : Nettoyage des noms de fichiers ---")
-    
-    for nomFichier in os.listdir(dossierSource):
-        if nomFichier.endswith('.csv'):
-            parties = nomFichier.replace('.csv', '').split('_')
-            if len(parties) >= 2 and parties[-1].isdigit() and len(parties[-1]) == 4:
-                # Nouveau nom : MOIS_ANNEE.csv
-                nouveau_nom = f"{parties[-2]}_{parties[-1]}.csv"
-                
-                if nomFichier != nouveau_nom:
-                    chemin_ancien = os.path.join(dossierSource, nomFichier)
-                    chemin_nouveau = os.path.join(dossierSource, nouveau_nom)
-                    
-                    try:
-                        os.rename(chemin_ancien, chemin_nouveau)
-                        print(f"🔄 Renommé : {nomFichier} -> {nouveau_nom}")
-                        nb_renommes += 1
-                    except Exception as e:
-                        print(f"❌ Erreur de renommage pour {nomFichier} : {e}")
+    def creer_widgets(self): 
+        # 1ER BLOC : SELECTION DOSSIER
+        # CORRECTION 2 : "pasx" corrigé en "padx"
+        frame_dossier = tk.LabelFrame(self.root, text="Etape 1 : Sélectionnez le dossier où sont les CSV", padx=10, pady=10)
+        frame_dossier.pack(fill="x", padx=10, pady=5)
+
+        lbl_dossier = tk.Label(frame_dossier, text="Dossier contenant les fichiers CSV :")
+        lbl_dossier.pack(anchor="w")
+
+        frame_input_dossier = tk.Frame(frame_dossier)
+        frame_input_dossier.pack(fill="x")
+
+        entry_dossier = tk.Entry(frame_input_dossier, textvariable=self.dossier_source_path, width=50)
+        entry_dossier.pack(side="left", fill="x", expand=True, padx=(0, 5))
+
+        # CORRECTION 3 : Le bouton était mal configuré (mauvais texte et manque la commande)
+        btn_browse = tk.Button(frame_input_dossier, text="Parcourir...", command=self.choisir_dossier)
+        btn_browse.pack(side="right")
+
+        # 2EME BLOC : PARAMETRES DE SORTIE
+        frame_params = tk.LabelFrame(self.root, text="2. Paramètre de conversion", padx=10, pady=10)
+        frame_params.pack(fill="x", padx=10, pady=5)
+
+        # NOM FICHIER DE SORTIE
+        lbl_nom = tk.Label(frame_params, text="Nom du fichier Excel de sortie : ")
+        lbl_nom.grid(row=0, column=0, sticky="w", pady=5)
+        
+        # CORRECTION 4 : Utilisation du bon nom de variable corrigé plus haut
+        entry_nom = tk.Entry(frame_params, textvariable=self.nom_fichier_sortie, width=40)
+        entry_nom.grid(row=0, column=1, sticky="w", padx=10)
+
+        # MODE (Radio Buttons)
+        lbl_mode = tk.Label(frame_params, text="Mode de conversion :")
+        lbl_mode.grid(row=1, column=0, sticky="w", pady=10)
+
+        frame_radios = tk.Frame(frame_params)
+        frame_radios.grid(row=1, column=1, sticky="w", padx=10)
+
+        # Création des boutons radio avec liaison variable
+        rb1 = tk.Radiobutton(frame_radios, text="Mode Multi-Feuilles (1 CSV = 1 Feuille Excel)", 
+                             variable=self.mode_execution, value="multi")
+        rb1.pack(anchor="w")
+
+        rb2 = tk.Radiobutton(frame_radios, text="Mode Addition : Tous les CSV sur une seule feuille Excel", 
+                             variable=self.mode_execution, value="concat")
+        rb2.pack(anchor="w")
+
+        # 3. Boutons d'actions
+        self.btn_action = tk.Button(self.root, text="LANCER LA CONVERSION", 
+                                    bg="#4CAF50", fg="white", font=("Arial", 10, "bold"),
+                                    command=self.lancer_processus, height=2)
+        self.btn_action.pack(fill="x", padx=10, pady=20)
+
+        # ZONE DE LOGS 
+        lbl_log = tk.Label(self.root, text="Journal d'exécution :")
+        lbl_log.pack(anchor="w", padx=10)
+
+        self.log_area = scrolledtext.ScrolledText(self.root, state='disabled', font=("Consolas", 9))
+        self.log_area.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+
+    # --- FONCTIONS UTILITAIRES GUI --- 
+    def choisir_dossier(self):
+        dossier = filedialog.askdirectory()
+        if dossier:
+            self.dossier_source_path.set(dossier)
+            self.log(f"Dossier sélectionné : {dossier}")
+
+    def log(self, message, tag=None):
+        self.log_area.config(state='normal')
+        self.log_area.insert(tk.END, message + "\n", tag)
+        self.log_area.see(tk.END)
+        self.log_area.config(state='disabled')
+        self.root.update() 
+
+    def lancer_processus(self):
+        dossier = self.dossier_source_path.get()
+        nom_sortie = self.nom_fichier_sortie.get()
+        mode = self.mode_execution.get()
+
+        # Validations de base
+        if not dossier or not os.path.exists(dossier):
+            messagebox.showerror("Erreur", "Veuillez sélectionner un dossier valide.")
+            return
+        
+        if not nom_sortie:
+            messagebox.showerror("Erreur", "Veuillez donner un nom au fichier Excel.")
+            return
+
+        if not nom_sortie.lower().endswith('.xlsx'):
+            nom_sortie += '.xlsx'
+            self.nom_fichier_sortie.set(nom_sortie)
+
+        # Désactiver le bouton pour éviter le double-clic
+        self.btn_action.config(state="disabled", text="Traitement en cours...")
+        self.log("-" * 50)
+        self.log("DÉMARRAGE DU TRAITEMENT")
+        
+        try:
+            # 1. Renommage
+            self.renommer_fichiers_csv(dossier)
             
-    if nb_renommes == 0:
-        print("Aucun fichier à renommer (les noms sont déjà courts ou le format n'est pas ID_MOIS_ANNEE).")
+            # 2. Conversion
+            self.convertir_csv_en_excel_fusion(dossier, nom_sortie, mode)
+            
+            messagebox.showinfo("Succès", "Traitement terminé avec succès !")
+            
+        except Exception as e:
+            self.log(f"ERREUR CRITIQUE : {e}")
+            messagebox.showerror("Erreur", f"Une erreur est survenue :\n{e}")
+        
+        finally:
+            self.btn_action.config(state="normal", text="LANCER LA CONVERSION")
 
+    def renommer_fichiers_csv(self, dossier_source):
+        self.log("--- Étape 1 : Vérification des noms de fichiers ---")
+        nb_renommes = 0
+        try:
+            for nom_fichier in os.listdir(dossier_source):
+                if nom_fichier.endswith('.csv'):
+                    parties = nom_fichier.replace('.csv', '').split('_')
+                    if len(parties) >= 2 and parties[-1].isdigit() and len(parties[-1]) == 4:
+                        nouveau_nom = f"{parties[-2]}_{parties[-1]}.csv"
+                        if nom_fichier != nouveau_nom:
+                            chemin_ancien = os.path.join(dossier_source, nom_fichier)
+                            chemin_nouveau = os.path.join(dossier_source, nouveau_nom)
+                            try:
+                                os.rename(chemin_ancien, chemin_nouveau)
+                                self.log(f"🔄 Renommé : {nom_fichier} -> {nouveau_nom}")
+                                nb_renommes += 1
+                            except Exception as e:
+                                self.log(f"❌ Erreur renommage {nom_fichier} : {e}")
+        except Exception as e:
+             self.log(f"Erreur lecture dossier : {e}")
 
-# --- FONCTION PRINCIPALE DE CONVERSION ET FUSION ---
-def excelConverter(dossierSource, nomExcel, mode): 
-    
-    path_excel = os.path.join(dossierSource, nomExcel)
-    
-    ##Configs pour +eurs types de csv
-    configurations = [(';', 'utf-8'), (';', 'latin-1'), (',', 'utf-8'), (',', 'latin-1')]
-    dataframes = {}
-    df_concat = pd.DataFrame()
-    
-    print("\n---------------------------------------------------------")
-    print(f"Démarrage en mode : {'CONCATENATION (une seule feuille)' if mode == 'concat' else 'MULTI-PAGES (une feuille par fichier)'}")
-    print("---------------------------------------------------------")
+        if nb_renommes == 0:
+            self.log("Aucun fichier nécessitant un renommage trouvé.")
 
-    for nomFichier in os.listdir(dossierSource) :
-        if nomFichier.endswith('.csv') and os.path.isfile(os.path.join(dossierSource, nomFichier)): 
-            chemin_csv = os.path.join(dossierSource, nomFichier)
+    def convertir_csv_en_excel_fusion(self, dossier_source, nom_fichier_excel, mode):
+        path_excel = os.path.join(dossier_source, nom_fichier_excel)
+        configurations = [(';', 'utf-8'), (';', 'latin-1'), (',', 'utf-8'), (',', 'latin-1')]
+        dataframes = {}
+        df_concat = pd.DataFrame()
+
+        self.log("\n--- Étape 2 : Lecture et Conversion ---")
+        
+        fichiers_csv = [f for f in os.listdir(dossier_source) if f.endswith('.csv')]
+        if not fichiers_csv:
+            self.log("⚠️ Aucun fichier CSV trouvé dans le dossier !")
+            return
+
+        for nom_fichier in fichiers_csv:
+            chemin_csv = os.path.join(dossier_source, nom_fichier)
             conversion_reussie = False
             
             for sep, encoding in configurations:
                 try:
                     df = pd.read_csv(chemin_csv, sep=sep, encoding=encoding)
-                    
-                    # VÉRIFICATION CRITIQUE : S'assurer qu'il y a plus d'une colonne (séparateur correct)
                     if df.shape[1] > 1:
                         conversion_reussie = True
-                        
                         if mode == 'concat':
-                            # Concaténation
-                            df['Fichier_Source'] = nomFichier.replace('.csv', '')
+                            df['Fichier_Source'] = nom_fichier.replace('.csv', '')
                             df_concat = pd.concat([df_concat, df], ignore_index=True)
-                            print(f"✅ Lecture réussie de {nomFichier} (Ajouté à la feuille unique)")
+                            self.log(f"✅ {nom_fichier} : Ajouté (Concat)")
                         else:
-                            # Multi-Pages
-                            nom_feuille = nomFichier.replace('.csv', '') 
+                            nom_feuille = nom_fichier.replace('.csv', '')[:30] 
                             dataframes[nom_feuille] = df
-                            print(f"✅ Lecture réussie de {nomFichier} (Feuille: {nom_feuille})")
-                        
+                            self.log(f"✅ {nom_fichier} : Lu (Feuille: {nom_feuille})")
                         break 
                 except Exception:
-                    continue 
+                    continue
             
             if not conversion_reussie:
-                print(f"⚠️ Échec de la lecture pour {nomFichier}.")
-    
-    # --- ÉTAPE D'ÉCRITURE FINALE ---
-    
-    if (mode == 'multi' and dataframes) or (mode == 'concat' and not df_concat.empty):
-        print("\n---------------------------------------------------------")
-        print(f"Écriture du fichier Excel : {nomExcel}...")
-        try:
-            with pd.ExcelWriter(path_excel, engine='xlsxwriter') as writer:
-                if mode == 'concat':
-                    df_concat.to_excel(writer, sheet_name='Fusion_Totale', index=False)
-                else:
-                    for sheet_name, df in dataframes.items():
-                        df.to_excel(writer, sheet_name=sheet_name, index=False)
-            
-            print(f"🎉 Succès ! Le fichier Excel a été généré dans : {os.path.dirname(path_excel) or dossierSource}")
-            
-        except Exception as e:
-            print(f"❌ Erreur lors de l'écriture du fichier Excel : {e}")
-    else:
-        print("Aucun fichier CSV valide trouvé ou traité.")
+                self.log(f"⚠️ Échec lecture : {nom_fichier}")
 
-
-# --- DÉMARRAGE DU PROGRAMME ---
-if __name__ == "__main__":
-    
-    # Instructions Console
-    print("=======================================================")
-    print("         CONVERTISSEUR CSV VERS EXCEL")
-    print("=======================================================")
-    print("ATTENTION : Le fichier Excel de sortie sera créé dans le dossier source.")
-    print("Veuillez suivre les étapes dans les fenêtres de dialogue qui vont apparaître.")
-    print("-------------------------------------------------------")
-    
-    
-    dossierSource, nomExcel = afficher_dialogue_et_parametres()
-    
-    
-    renameCsv(dossierSource)
-    
-    
-    print("\n=======================================================")
-    print("Choisissez le mode de conversion :")
-    print("1 - Fichiers séparés : 1 CSV = 1 feuille Excel")
-    print("2 - Concaténation : Tous les CSV sur 1 seule feuille")
-    
-    while True:
-        choix = input("Entrez 1 ou 2 : ").strip()
-        if choix == '1':
-            mode_execution = 'multi'
-            break
-        elif choix == '2':
-            mode_execution = 'concat'
-            break
+        # Ecriture
+        if (mode == 'multi' and dataframes) or (mode == 'concat' and not df_concat.empty):
+            self.log(f"\n--- Étape 3 : Écriture du fichier Excel ---")
+            self.log(f"Création de {nom_fichier_excel}...")
+            try:
+                with pd.ExcelWriter(path_excel, engine='xlsxwriter') as writer:
+                    if mode == 'concat':
+                        df_concat.to_excel(writer, sheet_name='Fusion_Totale', index=False)
+                    else:
+                        for sheet_name, df in dataframes.items():
+                            df.to_excel(writer, sheet_name=sheet_name, index=False)
+                self.log(f"🎉 TERMINÉ ! Fichier créé dans le dossier source.")
+            except Exception as e:
+                self.log(f"❌ Erreur écriture Excel : {e}")
         else:
-            print("Choix invalide. Veuillez entrer '1' ou '2'.")
-            
-    
-    excelConverter(dossierSource, nomExcel, mode_execution)
-    
-    # Pause finale
-    input("\nConversion terminée. Appuyez sur Entrée pour quitter...")
+            self.log("❌ Aucune donnée valide à écrire.")
+
+# --- LANCEMENT ---
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = ApplicationConvertisseur(root)
+    root.mainloop()
