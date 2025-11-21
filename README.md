@@ -1,6 +1,6 @@
 # CSV_to_XLS : Convertisseur de CSV en Excel 📊
 
-Un outil autonome et convivial conçu pour **convertir et fusionner plusieurs fichiers CSV en un seul fichier Excel (.xlsx)** sous Windows.
+Un outil autonome conçu pour **convertir et fusionner plusieurs fichiers CSV en un seul fichier Excel (.xlsx)** sous Windows.
 
 ---
 
@@ -16,8 +16,8 @@ Un outil autonome et convivial conçu pour **convertir et fusionner plusieurs fi
 
 L'outil ne nécessite **aucune installation de Python ni de dépendances**.
 
-1.  **Extraction** : Extrayez le fichier `CSV_Converter_GUI.exe` de son archive.
-2.  **Lancement** : Double-cliquez sur l'exécutable **`CSV_Converter_GUI.exe`**.
+1.  **Extraction** : Extrayez le fichier `csv_excel.exe` de son archive.
+2.  **Lancement** : Double-cliquez sur l'exécutable **`csv_excel.exe`**.
 
 ### Processus Interactif 🗣️
 
@@ -41,11 +41,11 @@ Cette application a été compilée à partir d'un script Python, permettant à 
 
 ### Outil de Compilation
 
-L'outil utilisé pour cette transformation est **PyInstaller**. Toutes les dépendances sont incluses dans le fichier unique `CSV_Converter_GUI.exe`.
+L'outil utilisé pour cette transformation est **PyInstaller**. Toutes les dépendances sont incluses dans le fichier unique `csv_excel.exe`.
 
 ### Commande de Compilation
 
 Le programme a été créé en utilisant la commande suivante, garantissant une distribution simple et portable :
 
 ```bash
-python -m PyInstaller --onefile --name "CSV_Converter_GUI" conversion_finale.py
+python -m PyInstaller --onefile --name "csv_excel" conversion.py
